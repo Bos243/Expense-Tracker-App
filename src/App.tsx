@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import { Trash } from "lucide-react"
-import { db } from './firebase'
+import { db, auth } from './firebase'
 import {
   collection,
   addDoc,
-  getDocs,
   deleteDoc,
   doc,
   onSnapshot,
   query,
-  orderBy
+  orderBy,
+  where
 } from "firebase/firestore"
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User
+} from "firebase/auth"
 
 type Expense = {
   id: string
@@ -19,16 +26,11 @@ type Expense = {
   description: string
   category: string
   date: string
+  userId: string
 }
 
 const categories = [
-  "Food",
-  "Transportation",
-  "Entertainment",
-  "Utilities",
-  "Shopping",
-  "Healthcare",
-  "Other"
+  "Food", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Other"
 ]
 
 export default function ExpenseTracker() {
@@ -37,10 +39,29 @@ export default function ExpenseTracker() {
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [user, setUser] = useState<User | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
+  const [error, setError] = useState('')
 
-  // Real-time sync with Firestore
+  // Listen for auth state changes
   useEffect(() => {
-    const q = query(collection(db, "expenses"), orderBy("date", "desc"))
+    const unsub = onAuthStateChanged(auth, setUser)
+    return () => unsub()
+  }, [])
+
+  // Fetch expenses for the logged-in user
+  useEffect(() => {
+    if (!user) {
+      setExpenses([])
+      return
+    }
+    const q = query(
+      collection(db, "expenses"),
+      where("userId", "==", user.uid),
+      orderBy("date", "desc")
+    )
     const unsub = onSnapshot(q, (snapshot) => {
       setExpenses(
         snapshot.docs.map(doc => ({
@@ -50,18 +71,19 @@ export default function ExpenseTracker() {
       )
     })
     return () => unsub()
-  }, [])
+  }, [user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!amount || !description || !category || !date) return
+    if (!amount || !description || !category || !date || !user) return
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
     await addDoc(collection(db, "expenses"), {
       amount: parsedAmount,
       description,
       category,
-      date
+      date,
+      userId: user.uid
     })
     setAmount('')
     setDescription('')
@@ -73,6 +95,31 @@ export default function ExpenseTracker() {
     await deleteDoc(doc(db, "expenses", id))
   }
 
+  // Auth handlers
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    try {
+      await createUserWithEmailAndPassword(auth, email, password)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    try {
+      await signInWithEmailAndPassword(auth, email, password)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await signOut(auth)
+  }
+
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const categorySummary = categories.map(cat => {
     const total = expenses
@@ -80,6 +127,35 @@ export default function ExpenseTracker() {
       .reduce((sum, expense) => sum + expense.amount, 0)
     return { category: cat, total }
   }).filter(item => item.total > 0)
+
+  if (!user) {
+    return (
+      <div className="app-container">
+        <div className="card">
+          <h2 className="card-title">{authMode === 'signin' ? 'Sign In' : 'Sign Up'}</h2>
+          <form onSubmit={authMode === 'signin' ? handleSignIn : handleSignUp}>
+            <div className="form-group">
+              <label>Email</label>
+              <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label>Password</label>
+              <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+            </div>
+            {error && <div style={{color: 'red', marginBottom: 8}}>{error}</div>}
+            <button className="button" type="submit">{authMode === 'signin' ? 'Sign In' : 'Sign Up'}</button>
+          </form>
+          <div style={{marginTop: 12}}>
+            {authMode === 'signin' ? (
+              <span>Don't have an account? <button className="button" style={{padding: 4, fontSize: 14}} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
+            ) : (
+              <span>Already have an account? <button className="button" style={{padding: 4, fontSize: 14}} onClick={() => setAuthMode('signin')}>Sign In</button></span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app-container">
@@ -191,6 +267,10 @@ export default function ExpenseTracker() {
           )}
         </div>
       </div>
+
+      <button className="button" onClick={handleSignOut} style={{marginTop: 16}}>
+        Sign Out
+      </button>
     </div>
   )
 }
