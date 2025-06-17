@@ -57,12 +57,14 @@ export default function ExpenseTracker() {
       setExpenses([])
       return
     }
+    console.log("Current user UID:", user.uid)
     const q = query(
       collection(db, "expenses"),
       where("userId", "==", user.uid),
       orderBy("date", "desc")
     )
     const unsub = onSnapshot(q, (snapshot) => {
+      console.log("Fetched docs:", snapshot.docs.length)
       setExpenses(
         snapshot.docs.map(doc => ({
           id: doc.id,
