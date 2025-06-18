@@ -9,7 +9,6 @@ import {
   doc,
   onSnapshot,
   query,
-  orderBy,
   where,
   Timestamp
 } from "firebase/firestore"
@@ -46,38 +45,47 @@ export default function ExpenseTracker() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState('')
 
-  // Listen for auth state changes
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser)
     return () => unsub()
   }, [])
 
-  // Fetch expenses for the logged-in user
   useEffect(() => {
     if (!user) {
       setExpenses([])
       return
     }
+
+    console.log("✅ Listening for user ID:", user.uid)
+
     const q = query(
       collection(db, "expenses"),
-      where("userId", "==", user.uid),
-      orderBy("date", "desc")
+      where("userId", "==", user.uid)
     )
+
     const unsub = onSnapshot(q, (snapshot) => {
-      setExpenses(
-        snapshot.docs.map(doc => {
-          const data = doc.data()
-          return {
-            id: doc.id,
-            amount: data.amount,
-            description: data.description,
-            category: data.category,
-            userId: data.userId,
-            date: data.date.toDate().toISOString().split('T')[0]
-          }
-        }) as Expense[]
-      )
+      console.log("📦 Snapshot received:", snapshot.size, "docs")
+      snapshot.forEach(doc => {
+        console.log("📄 Doc:", doc.id, doc.data())
+      })
+
+      const fetched = snapshot.docs.map(doc => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          amount: data.amount,
+          description: data.description,
+          category: data.category,
+          userId: data.userId,
+          date: data.date?.toDate().toISOString().split('T')[0] || ''
+        }
+      })
+
+      setExpenses(fetched)
+    }, (err) => {
+      console.error("🔥 Snapshot error:", err.message)
     })
+
     return () => unsub()
   }, [user])
 
@@ -99,7 +107,7 @@ export default function ExpenseTracker() {
       setCategory('')
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
-      console.error("Error adding document:", err)
+      console.error("❌ Error adding document:", err)
     }
   }
 
@@ -107,7 +115,6 @@ export default function ExpenseTracker() {
     await deleteDoc(doc(db, "expenses", id))
   }
 
-  // Auth handlers
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
