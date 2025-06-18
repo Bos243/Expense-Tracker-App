@@ -10,7 +10,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  where
+  where,
+  Timestamp
 } from "firebase/firestore"
 import {
   createUserWithEmailAndPassword,
@@ -57,19 +58,24 @@ export default function ExpenseTracker() {
       setExpenses([])
       return
     }
-    console.log("Current user UID:", user.uid)
     const q = query(
       collection(db, "expenses"),
       where("userId", "==", user.uid),
       orderBy("date", "desc")
     )
     const unsub = onSnapshot(q, (snapshot) => {
-      console.log("Fetched docs:", snapshot.docs.length)
       setExpenses(
-        snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Expense[]
+        snapshot.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            amount: data.amount,
+            description: data.description,
+            category: data.category,
+            userId: data.userId,
+            date: data.date.toDate().toISOString().split('T')[0]
+          }
+        }) as Expense[]
       )
     })
     return () => unsub()
@@ -80,17 +86,21 @@ export default function ExpenseTracker() {
     if (!amount || !description || !category || !date || !user) return
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
-    await addDoc(collection(db, "expenses"), {
-      amount: parsedAmount,
-      description,
-      category,
-      date,
-      userId: user.uid
-    })
-    setAmount('')
-    setDescription('')
-    setCategory('')
-    setDate(new Date().toISOString().split('T')[0])
+    try {
+      await addDoc(collection(db, "expenses"), {
+        amount: parsedAmount,
+        description,
+        category,
+        date: Timestamp.fromDate(new Date(date)),
+        userId: user.uid
+      })
+      setAmount('')
+      setDescription('')
+      setCategory('')
+      setDate(new Date().toISOString().split('T')[0])
+    } catch (err) {
+      console.error("Error adding document:", err)
+    }
   }
 
   const deleteExpense = async (id: string) => {
@@ -246,7 +256,7 @@ export default function ExpenseTracker() {
           {expenses.length === 0 ? (
             <p style={{color: '#64748b'}}>No expenses recorded yet</p>
           ) : (
-            expenses.slice().reverse().map((expense) => (
+            expenses.map((expense) => (
               <div key={expense.id} className="expense-row">
                 <div>
                   <div className="expense-label">{expense.description}</div>
