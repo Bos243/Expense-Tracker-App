@@ -6,8 +6,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
   User
 } from "firebase/auth"
 import {
@@ -17,8 +18,10 @@ import {
   doc,
   onSnapshot,
   query,
-  setDoc,
   where,
+  getDoc,
+  setDoc,
+  deleteDoc as deleteBudgetDoc,
   Timestamp
 } from "firebase/firestore"
 
@@ -47,20 +50,22 @@ export default function ExpenseTracker() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // Monthly budget state
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null)
-  const [budgetInput, setBudgetInput] = useState('')
+  const [newBudget, setNewBudget] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
-  // --- Auth state listener ---
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (currentUser) => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
+      if (currentUser) {
+        await fetchBudget(currentUser.uid)
+      }
     })
     return () => unsub()
   }, [])
 
-  // --- Fetch expenses for logged in user ---
   useEffect(() => {
     if (!user || !user.emailVerified) {
       setExpenses([])
@@ -85,75 +90,53 @@ export default function ExpenseTracker() {
         }
       })
       setExpenses(fetched)
-    }, (err) => {
-      console.error("Snapshot error:", err.message)
     })
 
     return () => unsub()
   }, [user])
 
-  // --- Fetch monthly budget from Firestore ---
-  useEffect(() => {
-    if (!user) {
+  const fetchBudget = async (uid: string) => {
+    const docRef = doc(db, "budgets", uid)
+    const snap = await getDoc(docRef)
+    if (snap.exists()) {
+      setMonthlyBudget(snap.data().amount)
+    } else {
       setMonthlyBudget(null)
-      setBudgetInput('')
-      return
     }
-
-    const docRef = doc(db, "budgets", user.uid)
-    const unsub = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data()
-        setMonthlyBudget(data.amount)
-        setBudgetInput(data.amount.toString())
-      } else {
-        setMonthlyBudget(null)
-        setBudgetInput('')
-      }
-    }, (err) => {
-      console.error("Budget snapshot error:", err.message)
-    })
-
-    return () => unsub()
-  }, [user])
-
-  // --- Add new expense ---
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  if (!amount || !description || !category || !date || !user) return
-  const parsedAmount = parseFloat(amount)
-  if (isNaN(parsedAmount) || parsedAmount < 0) return
-  try {
-    await addDoc(collection(db, "expenses"), {
-      amount: parsedAmount,
-      description,
-      category,
-      date: Timestamp.fromDate(new Date(date)),
-      userId: user.uid
-    })
-
-    // 🚨 Alert if budget exceeded
-    const updatedTotal = totalExpenses + parsedAmount
-    if (monthlyBudget !== null && updatedTotal > monthlyBudget) {
-      alert("⚠️ Warning: You have exceeded your monthly budget!")
-    }
-
-    setAmount('')
-    setDescription('')
-    setCategory('')
-    setDate(new Date().toISOString().split('T')[0])
-  } catch (err) {
-    console.error("Error adding document:", err)
   }
-}
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!amount || !description || !category || !date || !user) return
+    const parsedAmount = parseFloat(amount)
+    if (isNaN(parsedAmount) || parsedAmount < 0) return
+    try {
+      await addDoc(collection(db, "expenses"), {
+        amount: parsedAmount,
+        description,
+        category,
+        date: Timestamp.fromDate(new Date(date)),
+        userId: user.uid
+      })
 
-  // --- Delete an expense ---
+      const updatedTotal = totalExpenses + parsedAmount
+      if (monthlyBudget !== null && updatedTotal > monthlyBudget) {
+        alert("⚠️ Warning: You have exceeded your monthly budget!")
+      }
+
+      setAmount('')
+      setDescription('')
+      setCategory('')
+      setDate(new Date().toISOString().split('T')[0])
+    } catch (err) {
+      console.error("Error adding document:", err)
+    }
+  }
+
   const deleteExpense = async (id: string) => {
     await deleteDoc(doc(db, "expenses", id))
   }
 
-  // --- Signup handler ---
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -171,7 +154,6 @@ export default function ExpenseTracker() {
     }
   }
 
-  // --- Signin handler ---
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -179,13 +161,11 @@ export default function ExpenseTracker() {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password)
       const user = userCred.user
-
       if (!user.emailVerified) {
         await signOut(auth)
         setError("⚠️ Email not verified. Please check your inbox.")
         return
       }
-
       setUser(user)
     } catch (err: any) {
       setError(err.message)
@@ -194,54 +174,62 @@ export default function ExpenseTracker() {
     }
   }
 
-  // --- Signout handler ---
   const handleSignOut = async () => {
     await signOut(auth)
   }
 
-  // --- Save monthly budget ---
-  const saveBudget = async () => {
-    if (!user) return
-    const numBudget = parseFloat(budgetInput)
-    if (isNaN(numBudget) || numBudget < 0) {
-      alert("Please enter a valid positive number for the budget.")
-      return
-    }
-
+  const handleResetPassword = async () => {
+    if (!email) return alert("Enter your email first.")
     try {
-      await setDoc(doc(db, "budgets", user.uid), { amount: numBudget })
-      setMonthlyBudget(numBudget)
-      alert("Monthly budget saved successfully.")
-    } catch (err) {
-      alert("Failed to save budget.")
-      console.error("Firestore save budget error:", err)
+      await sendPasswordResetEmail(auth, email)
+      alert("📩 Password reset email sent.")
+    } catch (err: any) {
+      alert(err.message)
     }
   }
 
-  // --- Delete monthly budget ---
+  const saveBudget = async () => {
+    if (!user || !newBudget) return
+    const parsed = parseFloat(newBudget)
+    if (isNaN(parsed) || parsed < 0) return
+    try {
+      await setDoc(doc(db, "budgets", user.uid), { amount: parsed })
+      setMonthlyBudget(parsed)
+      setNewBudget('')
+      alert("✅ Budget saved!")
+    } catch (err) {
+      console.error("Error saving budget:", err)
+    }
+  }
+
   const deleteBudget = async () => {
     if (!user) return
-
     try {
-      await deleteDoc(doc(db, "budgets", user.uid))
+      await deleteBudgetDoc(doc(db, "budgets", user.uid))
       setMonthlyBudget(null)
-      setBudgetInput('')
-      alert("Monthly budget deleted successfully.")
+      alert("🗑️ Budget deleted.")
     } catch (err) {
-      alert("Failed to delete monthly budget.")
-      console.error("Firestore delete budget error:", err)
+      console.error("Error deleting budget:", err)
     }
   }
 
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const categorySummary = categories.map(cat => {
-    const total = expenses
-      .filter(expense => expense.category === cat)
-      .reduce((sum, expense) => sum + expense.amount, 0)
+    const total = expenses.filter(e => e.category === cat).reduce((sum, e) => sum + e.amount, 0)
     return { category: cat, total }
   }).filter(item => item.total > 0)
 
-  // --- UI Renders ---
+  const filteredExpenses = expenses
+    .filter(e => !filterCategory || e.category === filterCategory)
+    .sort((a, b) => {
+      if (sortBy === 'date') {
+        const aTime = new Date(a.date).getTime()
+        const bTime = new Date(b.date).getTime()
+        return sortOrder === 'asc' ? aTime - bTime : bTime - aTime
+      } else {
+        return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount
+      }
+    })
 
   if (!user) {
     return (
@@ -262,11 +250,14 @@ export default function ExpenseTracker() {
               {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
             </button>
           </form>
+          <button className="button" onClick={handleResetPassword} style={{ marginTop: 8 }}>
+            Forgot Password?
+          </button>
           <div style={{ marginTop: 12 }}>
             {authMode === 'signin' ? (
-              <span>Don't have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
+              <span>Don't have an account? <button className="button" style={{ padding: 4 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
             ) : (
-              <span>Already have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signin')}>Sign In</button></span>
+              <span>Already have an account? <button className="button" style={{ padding: 4 }} onClick={() => setAuthMode('signin')}>Sign In</button></span>
             )}
           </div>
         </div>
@@ -278,8 +269,8 @@ export default function ExpenseTracker() {
     return (
       <div className="app-container">
         <div className="card">
-          <h2 className="card-title">Please Verify Your Email</h2>
-          <p>A verification email has been sent to <strong>{user.email}</strong>. Click the link to activate your account.</p>
+          <h2>Please Verify Your Email</h2>
+          <p>A verification email has been sent to <strong>{user.email}</strong>.</p>
           <button className="button" onClick={handleSignOut}>Sign Out</button>
         </div>
       </div>
@@ -288,125 +279,75 @@ export default function ExpenseTracker() {
 
   return (
     <div className="app-container">
-      {/* Monthly Budget Section */}
       <div className="card">
-        <h2 className="card-title">Monthly Budget</h2>
-        <input
-          type="number"
-          className="input"
-          value={budgetInput}
-          onChange={e => setBudgetInput(e.target.value)}
-          placeholder="Enter your monthly budget"
-        />
-        <div style={{ marginTop: 8 }}>
-          <button className="button" onClick={saveBudget} style={{ marginRight: 8 }}>Save Budget</button>
-          <button className="button" onClick={deleteBudget} style={{ backgroundColor: '#e53e3e' }}>Delete Budget</button>
-        </div>
-      </div>
-
-      {/* Expense Tracker Section */}
-      <div className="card">
-        <h2 className="card-title">Expense Tracker</h2>
+        <h2>Expense Tracker</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="amount">Amount</label>
-              <input
-                className="input"
-                id="amount"
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-              />
+              <label>Amount</label>
+              <input className="input" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
             </div>
             <div className="form-group">
-              <label htmlFor="category">Category</label>
-              <select
-                className="select"
-                id="category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              >
-                <option value="">Select a category</option>
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+              <label>Category</label>
+              <select className="select" value={category} onChange={e => setCategory(e.target.value)}>
+                <option value="">Select category</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="description">Description</label>
-              <input
-                className="input"
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What was this expense for?"
-              />
+              <label>Description</label>
+              <input className="input" value={description} onChange={e => setDescription(e.target.value)} />
             </div>
             <div className="form-group">
-              <label htmlFor="date">Date</label>
-              <input
-                className="input"
-                id="date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
+              <label>Date</label>
+              <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <button type="submit" className="button">Add Expense</button>
+          <button className="button" type="submit">Add Expense</button>
         </form>
       </div>
 
-      {/* Expense Summary Section */}
       <div className="card">
-        <h2 className="card-title">Expense Summary</h2>
-        <div className="summary-row">
-          <span className="summary-label">Total Expenses:</span>
-          <span className="summary-value">ETB{totalExpenses.toFixed(2)}</span>
+        <h2>Monthly Budget</h2>
+        <p>Current Budget: <strong>{monthlyBudget !== null ? `ETB${monthlyBudget}` : 'Not Set'}</strong></p>
+        <input className="input" type="number" placeholder="Enter new budget" value={newBudget} onChange={e => setNewBudget(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button className="button" onClick={saveBudget}>Save Budget</button>
+          <button className="button" onClick={deleteBudget}>Delete Budget</button>
         </div>
-        {categorySummary.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: '1.1rem', color: '#1e293b', marginBottom: 8 }}>By Category:</h3>
-            {categorySummary.map((item) => (
-              <div className="summary-row" key={item.category}>
-                <span className="summary-label">{item.category}</span>
-                <span className="summary-value">ETB{item.total.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Recent Expenses Section */}
       <div className="card">
-        <h2 className="card-title">Recent Expenses</h2>
+        <h2>Recent Expenses</h2>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <select className="select" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+            <option value="">All Categories</option>
+            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+          <select className="select" value={sortBy} onChange={e => setSortBy(e.target.value as 'date' | 'amount')}>
+            <option value="date">Sort by Date</option>
+            <option value="amount">Sort by Amount</option>
+          </select>
+          <select className="select" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
         <div className="expense-list">
-          {expenses.length === 0 ? (
-            <p style={{ color: '#64748b' }}>No expenses recorded yet</p>
+          {filteredExpenses.length === 0 ? (
+            <p>No expenses recorded yet</p>
           ) : (
-            expenses.map((expense) => (
+            filteredExpenses.map(expense => (
               <div key={expense.id} className="expense-row">
                 <div>
                   <div className="expense-label">{expense.description}</div>
-                  <div style={{ fontSize: '0.95rem', color: '#64748b' }}>
-                    {expense.category} • {expense.date}
-                  </div>
+                  <div style={{ fontSize: '0.9rem' }}>{expense.category} • {expense.date}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span className="expense-value">ETB{expense.amount.toFixed(2)}</span>
-                  <button
-                    className="delete-btn"
-                    title="Delete"
-                    onClick={() => deleteExpense(expense.id)}
-                  >
-                    <Trash size={18} />
-                  </button>
+                  <button className="delete-btn" onClick={() => deleteExpense(expense.id)}><Trash size={18} /></button>
                 </div>
               </div>
             ))
@@ -414,9 +355,7 @@ export default function ExpenseTracker() {
         </div>
       </div>
 
-      <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>
-        Sign Out
-      </button>
+      <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>Sign Out</button>
     </div>
   )
 }
