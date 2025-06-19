@@ -8,7 +8,6 @@ import {
   signOut,
   onAuthStateChanged,
   sendEmailVerification,
-  sendPasswordResetEmail,
   User
 } from "firebase/auth"
 import {
@@ -19,7 +18,9 @@ import {
   onSnapshot,
   query,
   where,
-  Timestamp
+  Timestamp,
+  setDoc,
+  getDoc
 } from "firebase/firestore"
 
 type Expense = {
@@ -48,6 +49,10 @@ export default function ExpenseTracker() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Monthly budget state
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null)
+  const [budgetInput, setBudgetInput] = useState('')
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
@@ -58,10 +63,17 @@ export default function ExpenseTracker() {
   useEffect(() => {
     if (!user || !user.emailVerified) {
       setExpenses([])
+      setMonthlyBudget(null)
+      setBudgetInput('')
       return
     }
 
-    const q = query(collection(db, "expenses"), where("userId", "==", user.uid))
+    // Load expenses
+    const q = query(
+      collection(db, "expenses"),
+      where("userId", "==", user.uid)
+    )
+
     const unsub = onSnapshot(q, (snapshot) => {
       const fetched = snapshot.docs.map(doc => {
         const data = doc.data()
@@ -79,6 +91,18 @@ export default function ExpenseTracker() {
       console.error("Snapshot error:", err.message)
     })
 
+    // Load monthly budget
+    const budgetDocRef = doc(db, "budgets", user.uid)
+    getDoc(budgetDocRef).then(docSnap => {
+      if (docSnap.exists()) {
+        setMonthlyBudget(docSnap.data().amount)
+        setBudgetInput(String(docSnap.data().amount))
+      } else {
+        setMonthlyBudget(null)
+        setBudgetInput('')
+      }
+    }).catch(err => console.error("Error fetching budget:", err))
+
     return () => unsub()
   }, [user])
 
@@ -88,7 +112,6 @@ export default function ExpenseTracker() {
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
     try {
-      setLoading(true)
       await addDoc(collection(db, "expenses"), {
         amount: parsedAmount,
         description,
@@ -101,9 +124,7 @@ export default function ExpenseTracker() {
       setCategory('')
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
-      setError("Failed to add expense.")
-    } finally {
-      setLoading(false)
+      console.error("Error adding document:", err)
     }
   }
 
@@ -150,25 +171,43 @@ export default function ExpenseTracker() {
     }
   }
 
-  const handleResetPassword = async () => {
-    if (!email) {
-      alert("Please enter your email address first.")
+  const handleSignOut = async () => {
+    await signOut(auth)
+  }
+
+  // Save monthly budget to Firestore
+  const saveBudget = async () => {
+    if (!user) return
+    const numBudget = parseFloat(budgetInput)
+    if (isNaN(numBudget) || numBudget < 0) {
+      alert("Please enter a valid positive number for the budget.")
       return
     }
 
-    setLoading(true)
     try {
-      await sendPasswordResetEmail(auth, email)
-      alert("✅ Password reset link sent to your email.")
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+      await setDoc(doc(db, "budgets", user.uid), { amount: numBudget })
+      setMonthlyBudget(numBudget)
+      alert("Monthly budget saved successfully.")
+    } catch (err) {
+      alert("Failed to save budget.")
+      console.error(err)
     }
   }
 
-  const handleSignOut = async () => {
-    await signOut(auth)
+  // Calculate total expenses for current month
+  const getCurrentMonthTotal = () => {
+    if (!user) return 0
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+
+    return expenses.reduce((sum, expense) => {
+      const expDate = new Date(expense.date)
+      if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
+        return sum + expense.amount
+      }
+      return sum
+    }, 0)
   }
 
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
@@ -193,35 +232,11 @@ export default function ExpenseTracker() {
               <label>Password</label>
               <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
-            {error && (
-              <div style={{
-                backgroundColor: '#fee2e2',
-                color: '#b91c1c',
-                padding: '8px 12px',
-                borderRadius: 6,
-                marginBottom: 8
-              }}>
-                ⚠️ {error}
-              </div>
-            )}
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
             <button className="button" type="submit" disabled={loading}>
               {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
             </button>
           </form>
-
-          {authMode === 'signin' && (
-            <div style={{ marginTop: 8 }}>
-              <button
-                type="button"
-                className="button"
-                style={{ padding: 4, fontSize: 14, backgroundColor: '#e2e8f0', color: '#1e293b' }}
-                onClick={handleResetPassword}
-              >
-                Forgot Password?
-              </button>
-            </div>
-          )}
-
           <div style={{ marginTop: 12 }}>
             {authMode === 'signin' ? (
               <span>Don't have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
@@ -248,7 +263,6 @@ export default function ExpenseTracker() {
 
   return (
     <div className="app-container">
-      {loading && <Loader />}
       <div className="card">
         <h2 className="card-title">Expense Tracker</h2>
         <form onSubmit={handleSubmit}>
@@ -303,7 +317,7 @@ export default function ExpenseTracker() {
               />
             </div>
           </div>
-          <button type="submit" className="button" disabled={loading}>Add Expense</button>
+          <button type="submit" className="button">Add Expense</button>
         </form>
       </div>
 
@@ -319,10 +333,45 @@ export default function ExpenseTracker() {
             {categorySummary.map((item) => (
               <div className="summary-row" key={item.category}>
                 <span className="summary-label">{item.category}</span>
-                <span className="summary-value">ETB{item.total.toFixed(2)}</span>
+                <span className="summary-value">
+                  ETB{item.total.toFixed(2)}
+                </span>
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Monthly Budget Card */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <h2 className="card-title">Monthly Budget</h2>
+        <input
+          type="number"
+          className="input"
+          placeholder="Set your monthly budget (ETB)"
+          value={budgetInput}
+          onChange={e => setBudgetInput(e.target.value)}
+          min="0"
+          step="0.01"
+        />
+        <button className="button" onClick={saveBudget} style={{ marginTop: 8 }}>Save Budget</button>
+
+        {monthlyBudget !== null && (
+          <p style={{ marginTop: 12 }}>
+            Your budget: <strong>ETB {monthlyBudget.toFixed(2)}</strong>
+          </p>
+        )}
+
+        {monthlyBudget !== null && getCurrentMonthTotal() > monthlyBudget && (
+          <p style={{ color: 'red', marginTop: 8, fontWeight: 'bold' }}>
+            ⚠️ You have exceeded your monthly budget!
+          </p>
+        )}
+
+        {monthlyBudget !== null && getCurrentMonthTotal() > monthlyBudget * 0.8 && getCurrentMonthTotal() <= monthlyBudget && (
+          <p style={{ color: 'orange', marginTop: 8, fontWeight: 'bold' }}>
+            ⚠️ You have used over 80% of your monthly budget.
+          </p>
         )}
       </div>
 
@@ -359,15 +408,6 @@ export default function ExpenseTracker() {
       <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>
         Sign Out
       </button>
-    </div>
-  )
-}
-
-function Loader() {
-  return (
-    <div style={{ textAlign: 'center', padding: '1rem', color: '#0f172a' }}>
-      <div className="spinner" />
-      <p>Processing... Please wait.</p>
     </div>
   )
 }
