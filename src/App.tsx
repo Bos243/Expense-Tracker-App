@@ -88,6 +88,7 @@ export default function ExpenseTracker() {
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
     try {
+      setLoading(true)
       await addDoc(collection(db, "expenses"), {
         amount: parsedAmount,
         description,
@@ -100,7 +101,9 @@ export default function ExpenseTracker() {
       setCategory('')
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
-      console.error("Error adding document:", err)
+      setError("Failed to add expense.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -190,7 +193,17 @@ export default function ExpenseTracker() {
               <label>Password</label>
               <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
-            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+            {error && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#b91c1c',
+                padding: '8px 12px',
+                borderRadius: 6,
+                marginBottom: 8
+              }}>
+                ⚠️ {error}
+              </div>
+            )}
             <button className="button" type="submit" disabled={loading}>
               {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
             </button>
@@ -232,9 +245,10 @@ export default function ExpenseTracker() {
       </div>
     )
   }
-  
+
   return (
     <div className="app-container">
+      {loading && <Loader />}
       <div className="card">
         <h2 className="card-title">Expense Tracker</h2>
         <form onSubmit={handleSubmit}>
@@ -289,7 +303,7 @@ export default function ExpenseTracker() {
               />
             </div>
           </div>
-          <button type="submit" className="button">Add Expense</button>
+          <button type="submit" className="button" disabled={loading}>Add Expense</button>
         </form>
       </div>
 
@@ -345,6 +359,15 @@ export default function ExpenseTracker() {
       <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>
         Sign Out
       </button>
+    </div>
+  )
+}
+
+function Loader() {
+  return (
+    <div style={{ textAlign: 'center', padding: '1rem', color: '#0f172a' }}>
+      <div className="spinner" />
+      <p>Processing... Please wait.</p>
     </div>
   )
 }
