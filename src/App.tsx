@@ -246,6 +246,27 @@ export default function ExpenseTracker() {
       }
     })
 
+  // *** New function for exporting filtered expenses as CSV ***
+  const exportExpensesCSV = () => {
+    if (filteredExpenses.length === 0) {
+      alert("No expenses to export.")
+      return
+    }
+    const csvHeader = "Description,Category,Date,Amount\n"
+    const csvRows = filteredExpenses.map(e =>
+      `"${e.description.replace(/"/g, '""')}",${e.category},${e.date},${e.amount.toFixed(2)}`
+    )
+    const csvContent = csvHeader + csvRows.join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.setAttribute("download", `expenses_export_${new Date().toISOString().slice(0,10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (!user) {
     return (
       <div className="app-container">
@@ -359,6 +380,11 @@ export default function ExpenseTracker() {
             <option value="desc">Descending</option>
             <option value="asc">Ascending</option>
           </select>
+
+          {/* Export Button */}
+          <button className="button" onClick={exportExpensesCSV}>
+            Export Expenses
+          </button>
         </div>
         <div className="expense-list">
           {filteredExpenses.length === 0 ? (
