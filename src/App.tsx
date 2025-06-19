@@ -118,7 +118,7 @@ export default function ExpenseTracker() {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password)
       if (userCred.user && !userCred.user.emailVerified) {
-        await sendEmailVerification(userCred.user) // ✅ FIXED HERE
+        await sendEmailVerification(userCred.user)
         alert("✅ Verification email sent! Please check your inbox.")
       }
     } catch (err: any) {
@@ -269,7 +269,7 @@ export default function ExpenseTracker() {
         <h2 className="card-title">Expense Summary</h2>
         <div className="summary-row">
           <span className="summary-label">Total Expenses:</span>
-          <span className="summary-value">${totalExpenses.toFixed(2)}</span>
+          <span className="summary-value">ETB{totalExpenses.toFixed(2)}</span>
         </div>
         {categorySummary.length > 0 && (
           <div style={{ marginTop: 12 }}>
@@ -277,7 +277,7 @@ export default function ExpenseTracker() {
             {categorySummary.map((item) => (
               <div className="summary-row" key={item.category}>
                 <span className="summary-label">{item.category}</span>
-                <span className="summary-value">${item.total.toFixed(2)}</span>
+                <span className="summary-value">ETB{item.total.toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -299,7 +299,7 @@ export default function ExpenseTracker() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span className="expense-value">${expense.amount.toFixed(2)}</span>
+                  <span className="expense-value">ETB{expense.amount.toFixed(2)}</span>
                   <button
                     className="delete-btn"
                     title="Delete"
