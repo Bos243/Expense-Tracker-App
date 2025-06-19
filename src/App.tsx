@@ -17,10 +17,9 @@ import {
   doc,
   onSnapshot,
   query,
-  where,
-  Timestamp,
   setDoc,
-  getDoc
+  where,
+  Timestamp
 } from "firebase/firestore"
 
 type Expense = {
@@ -53,6 +52,7 @@ export default function ExpenseTracker() {
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null)
   const [budgetInput, setBudgetInput] = useState('')
 
+  // --- Auth state listener ---
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
@@ -60,15 +60,13 @@ export default function ExpenseTracker() {
     return () => unsub()
   }, [])
 
+  // --- Fetch expenses for logged in user ---
   useEffect(() => {
     if (!user || !user.emailVerified) {
       setExpenses([])
-      setMonthlyBudget(null)
-      setBudgetInput('')
       return
     }
 
-    // Load expenses
     const q = query(
       collection(db, "expenses"),
       where("userId", "==", user.uid)
@@ -91,21 +89,35 @@ export default function ExpenseTracker() {
       console.error("Snapshot error:", err.message)
     })
 
-    // Load monthly budget
-    const budgetDocRef = doc(db, "budgets", user.uid)
-    getDoc(budgetDocRef).then(docSnap => {
+    return () => unsub()
+  }, [user])
+
+  // --- Fetch monthly budget from Firestore ---
+  useEffect(() => {
+    if (!user) {
+      setMonthlyBudget(null)
+      setBudgetInput('')
+      return
+    }
+
+    const docRef = doc(db, "budgets", user.uid)
+    const unsub = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        setMonthlyBudget(docSnap.data().amount)
-        setBudgetInput(String(docSnap.data().amount))
+        const data = docSnap.data()
+        setMonthlyBudget(data.amount)
+        setBudgetInput(data.amount.toString())
       } else {
         setMonthlyBudget(null)
         setBudgetInput('')
       }
-    }).catch(err => console.error("Error fetching budget:", err))
+    }, (err) => {
+      console.error("Budget snapshot error:", err.message)
+    })
 
     return () => unsub()
   }, [user])
 
+  // --- Add new expense ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!amount || !description || !category || !date || !user) return
@@ -128,10 +140,12 @@ export default function ExpenseTracker() {
     }
   }
 
+  // --- Delete an expense ---
   const deleteExpense = async (id: string) => {
     await deleteDoc(doc(db, "expenses", id))
   }
 
+  // --- Signup handler ---
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -149,6 +163,7 @@ export default function ExpenseTracker() {
     }
   }
 
+  // --- Signin handler ---
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -171,11 +186,12 @@ export default function ExpenseTracker() {
     }
   }
 
+  // --- Signout handler ---
   const handleSignOut = async () => {
     await signOut(auth)
   }
 
-  // Save monthly budget to Firestore
+  // --- Save monthly budget ---
   const saveBudget = async () => {
     if (!user) return
     const numBudget = parseFloat(budgetInput)
@@ -190,24 +206,23 @@ export default function ExpenseTracker() {
       alert("Monthly budget saved successfully.")
     } catch (err) {
       alert("Failed to save budget.")
-      console.error(err)
+      console.error("Firestore save budget error:", err)
     }
   }
 
-  // Calculate total expenses for current month
-  const getCurrentMonthTotal = () => {
-    if (!user) return 0
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
+  // --- Delete monthly budget ---
+  const deleteBudget = async () => {
+    if (!user) return
 
-    return expenses.reduce((sum, expense) => {
-      const expDate = new Date(expense.date)
-      if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
-        return sum + expense.amount
-      }
-      return sum
-    }, 0)
+    try {
+      await deleteDoc(doc(db, "budgets", user.uid))
+      setMonthlyBudget(null)
+      setBudgetInput('')
+      alert("Monthly budget deleted successfully.")
+    } catch (err) {
+      alert("Failed to delete monthly budget.")
+      console.error("Firestore delete budget error:", err)
+    }
   }
 
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
@@ -217,6 +232,8 @@ export default function ExpenseTracker() {
       .reduce((sum, expense) => sum + expense.amount, 0)
     return { category: cat, total }
   }).filter(item => item.total > 0)
+
+  // --- UI Renders ---
 
   if (!user) {
     return (
@@ -263,6 +280,23 @@ export default function ExpenseTracker() {
 
   return (
     <div className="app-container">
+      {/* Monthly Budget Section */}
+      <div className="card">
+        <h2 className="card-title">Monthly Budget</h2>
+        <input
+          type="number"
+          className="input"
+          value={budgetInput}
+          onChange={e => setBudgetInput(e.target.value)}
+          placeholder="Enter your monthly budget"
+        />
+        <div style={{ marginTop: 8 }}>
+          <button className="button" onClick={saveBudget} style={{ marginRight: 8 }}>Save Budget</button>
+          <button className="button" onClick={deleteBudget} style={{ backgroundColor: '#e53e3e' }}>Delete Budget</button>
+        </div>
+      </div>
+
+      {/* Expense Tracker Section */}
       <div className="card">
         <h2 className="card-title">Expense Tracker</h2>
         <form onSubmit={handleSubmit}>
@@ -321,6 +355,7 @@ export default function ExpenseTracker() {
         </form>
       </div>
 
+      {/* Expense Summary Section */}
       <div className="card">
         <h2 className="card-title">Expense Summary</h2>
         <div className="summary-row">
@@ -333,48 +368,14 @@ export default function ExpenseTracker() {
             {categorySummary.map((item) => (
               <div className="summary-row" key={item.category}>
                 <span className="summary-label">{item.category}</span>
-                <span className="summary-value">
-                  ETB{item.total.toFixed(2)}
-                </span>
+                <span className="summary-value">ETB{item.total.toFixed(2)}</span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Monthly Budget Card */}
-      <div className="card" style={{ marginTop: 20 }}>
-        <h2 className="card-title">Monthly Budget</h2>
-        <input
-          type="number"
-          className="input"
-          placeholder="Set your monthly budget (ETB)"
-          value={budgetInput}
-          onChange={e => setBudgetInput(e.target.value)}
-          min="0"
-          step="0.01"
-        />
-        <button className="button" onClick={saveBudget} style={{ marginTop: 8 }}>Save Budget</button>
-
-        {monthlyBudget !== null && (
-          <p style={{ marginTop: 12 }}>
-            Your budget: <strong>ETB {monthlyBudget.toFixed(2)}</strong>
-          </p>
-        )}
-
-        {monthlyBudget !== null && getCurrentMonthTotal() > monthlyBudget && (
-          <p style={{ color: 'red', marginTop: 8, fontWeight: 'bold' }}>
-            ⚠️ You have exceeded your monthly budget!
-          </p>
-        )}
-
-        {monthlyBudget !== null && getCurrentMonthTotal() > monthlyBudget * 0.8 && getCurrentMonthTotal() <= monthlyBudget && (
-          <p style={{ color: 'orange', marginTop: 8, fontWeight: 'bold' }}>
-            ⚠️ You have used over 80% of your monthly budget.
-          </p>
-        )}
-      </div>
-
+      {/* Recent Expenses Section */}
       <div className="card">
         <h2 className="card-title">Recent Expenses</h2>
         <div className="expense-list">
