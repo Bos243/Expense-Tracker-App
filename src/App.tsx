@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 import { Trash } from "lucide-react"
 import { db, auth } from './firebase'
@@ -6,9 +6,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
+  onAuthStateChanged,
   User
 } from "firebase/auth"
 import {
@@ -16,11 +16,12 @@ import {
   addDoc,
   deleteDoc,
   doc,
-  getDoc,
-  setDoc,
   onSnapshot,
   query,
   where,
+  getDoc,
+  setDoc,
+  deleteDoc as deleteBudgetDoc,
   Timestamp
 } from "firebase/firestore"
 
@@ -37,13 +38,6 @@ const categories = [
   "Food", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Other"
 ]
 
-const sortOptions = [
-  { label: "Newest First", value: "newest" },
-  { label: "Oldest First", value: "oldest" },
-  { label: "Lowest Amount", value: "low" },
-  { label: "Highest Amount", value: "high" }
-]
-
 export default function ExpenseTracker() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [amount, setAmount] = useState('')
@@ -56,15 +50,18 @@ export default function ExpenseTracker() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null)
+  const [newBudget, setNewBudget] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
-  const [sortOrder, setSortOrder] = useState('newest')
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (currentUser) => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
+      if (currentUser) {
+        await fetchBudget(currentUser.uid)
+      }
     })
     return () => unsub()
   }, [])
@@ -80,7 +77,7 @@ export default function ExpenseTracker() {
       where("userId", "==", user.uid)
     )
 
-    const unsub = onSnapshot(q, async (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       const fetched = snapshot.docs.map(doc => {
         const data = doc.data()
         return {
@@ -93,50 +90,38 @@ export default function ExpenseTracker() {
         }
       })
       setExpenses(fetched)
-
-      // Fetch monthly budget
-      const monthKey = new Date().toISOString().slice(0, 7)
-      const budgetRef = doc(db, "budgets", `${user.uid}_${monthKey}`)
-      const budgetSnap = await getDoc(budgetRef)
-      if (budgetSnap.exists()) {
-        setMonthlyBudget(budgetSnap.data().amount)
-      } else {
-        setMonthlyBudget(null)
-      }
-    }, (err) => {
-      console.error("Snapshot error:", err.message)
     })
 
     return () => unsub()
   }, [user])
+
+  const fetchBudget = async (uid: string) => {
+    const docRef = doc(db, "budgets", uid)
+    const snap = await getDoc(docRef)
+    if (snap.exists()) {
+      setMonthlyBudget(snap.data().amount)
+    } else {
+      setMonthlyBudget(null)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!amount || !description || !category || !date || !user) return
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
-
-    const newDate = new Date(date)
-    const currentMonthKey = newDate.toISOString().slice(0, 7)
-
-    const currentMonthExpenses = expenses
-      .filter(exp => exp.date.startsWith(currentMonthKey))
-      .reduce((sum, exp) => sum + exp.amount, 0)
-
-    const willExceedBudget = monthlyBudget !== null && (currentMonthExpenses + parsedAmount) > monthlyBudget
-
     try {
-      setIsSubmitting(true)
       await addDoc(collection(db, "expenses"), {
         amount: parsedAmount,
         description,
         category,
-        date: Timestamp.fromDate(newDate),
+        date: Timestamp.fromDate(new Date(date)),
         userId: user.uid
       })
 
-      if (willExceedBudget) {
-        alert("⚠️ You've exceeded your monthly budget!")
+      const updatedTotal = totalExpenses + parsedAmount
+      if (monthlyBudget !== null && updatedTotal > monthlyBudget) {
+        alert("⚠️ Warning: You have exceeded your monthly budget!")
       }
 
       setAmount('')
@@ -145,8 +130,6 @@ export default function ExpenseTracker() {
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
       console.error("Error adding document:", err)
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
@@ -177,12 +160,13 @@ export default function ExpenseTracker() {
     setLoading(true)
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password)
-      if (!userCred.user.emailVerified) {
+      const user = userCred.user
+      if (!user.emailVerified) {
         await signOut(auth)
         setError("⚠️ Email not verified. Please check your inbox.")
         return
       }
-      setUser(userCred.user)
+      setUser(user)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -194,51 +178,58 @@ export default function ExpenseTracker() {
     await signOut(auth)
   }
 
-  const handlePasswordReset = async () => {
-    if (!email) return alert("Enter your email to reset password.")
+  const handleResetPassword = async () => {
+    if (!email) return alert("Enter your email first.")
     try {
       await sendPasswordResetEmail(auth, email)
-      alert("📧 Password reset email sent.")
+      alert("📩 Password reset email sent.")
     } catch (err: any) {
-      alert("Error: " + err.message)
+      alert(err.message)
     }
   }
 
-  const handleBudgetSave = async () => {
-    if (!user) return
-    const amount = prompt("Enter your monthly budget in ETB:")
-    if (!amount || isNaN(+amount)) return alert("Invalid amount.")
-
-    const monthKey = new Date().toISOString().slice(0, 7)
-    const ref = doc(db, "budgets", `${user.uid}_${monthKey}`)
-    await setDoc(ref, { amount: parseFloat(amount) })
-    alert("✅ Budget saved.")
-  }
-
-  const handleBudgetDelete = async () => {
-    if (!user) return
-    const monthKey = new Date().toISOString().slice(0, 7)
-    const ref = doc(db, "budgets", `${user.uid}_${monthKey}`)
-    await setDoc(ref, {}) // empty doc
-    setMonthlyBudget(null)
-    alert("❌ Budget deleted.")
-  }
-
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
-
-  const filtered = filterCategory
-    ? expenses.filter(e => e.category === filterCategory)
-    : expenses
-
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sortOrder) {
-      case 'newest': return b.date.localeCompare(a.date)
-      case 'oldest': return a.date.localeCompare(b.date)
-      case 'low': return a.amount - b.amount
-      case 'high': return b.amount - a.amount
-      default: return 0
+  const saveBudget = async () => {
+    if (!user || !newBudget) return
+    const parsed = parseFloat(newBudget)
+    if (isNaN(parsed) || parsed < 0) return
+    try {
+      await setDoc(doc(db, "budgets", user.uid), { amount: parsed })
+      setMonthlyBudget(parsed)
+      setNewBudget('')
+      alert("✅ Budget saved!")
+    } catch (err) {
+      console.error("Error saving budget:", err)
     }
-  })
+  }
+
+  const deleteBudget = async () => {
+    if (!user) return
+    try {
+      await deleteBudgetDoc(doc(db, "budgets", user.uid))
+      setMonthlyBudget(null)
+      alert("🗑️ Budget deleted.")
+    } catch (err) {
+      console.error("Error deleting budget:", err)
+    }
+  }
+
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
+  const categorySummary = categories.map(cat => {
+    const total = expenses.filter(e => e.category === cat).reduce((sum, e) => sum + e.amount, 0)
+    return { category: cat, total }
+  }).filter(item => item.total > 0)
+
+  const filteredExpenses = expenses
+    .filter(e => !filterCategory || e.category === filterCategory)
+    .sort((a, b) => {
+      if (sortBy === 'date') {
+        const aTime = new Date(a.date).getTime()
+        const bTime = new Date(b.date).getTime()
+        return sortOrder === 'asc' ? aTime - bTime : bTime - aTime
+      } else {
+        return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount
+      }
+    })
 
   if (!user) {
     return (
@@ -254,20 +245,20 @@ export default function ExpenseTracker() {
               <label>Password</label>
               <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
-            {error && <div style={{ color: 'red' }}>{error}</div>}
-            {loading ? <Spinner /> : (
-              <button className="button" type="submit">
-                {authMode === 'signin' ? 'Sign In' : 'Sign Up'}
-              </button>
-            )}
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+            <button className="button" type="submit" disabled={loading}>
+              {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+            </button>
           </form>
-          <button onClick={handlePasswordReset} className="button" style={{ marginTop: 8 }}>
+          <button className="button" onClick={handleResetPassword} style={{ marginTop: 8 }}>
             Forgot Password?
           </button>
-          <div style={{ marginTop: 10 }}>
-            {authMode === 'signin'
-              ? <span>Don't have an account? <button className="button" onClick={() => setAuthMode('signup')}>Sign Up</button></span>
-              : <span>Already have an account? <button className="button" onClick={() => setAuthMode('signin')}>Sign In</button></span>}
+          <div style={{ marginTop: 12 }}>
+            {authMode === 'signin' ? (
+              <span>Don't have an account? <button className="button" style={{ padding: 4 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
+            ) : (
+              <span>Already have an account? <button className="button" style={{ padding: 4 }} onClick={() => setAuthMode('signin')}>Sign In</button></span>
+            )}
           </div>
         </div>
       </div>
@@ -279,7 +270,7 @@ export default function ExpenseTracker() {
       <div className="app-container">
         <div className="card">
           <h2>Please Verify Your Email</h2>
-          <p>Check your inbox at <strong>{user.email}</strong> for the verification link.</p>
+          <p>A verification email has been sent to <strong>{user.email}</strong>.</p>
           <button className="button" onClick={handleSignOut}>Sign Out</button>
         </div>
       </div>
@@ -289,86 +280,82 @@ export default function ExpenseTracker() {
   return (
     <div className="app-container">
       <div className="card">
-        <h2 className="card-title">Expense Tracker</h2>
+        <h2>Expense Tracker</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-row">
-            <input className="input" placeholder="Amount" value={amount} onChange={e => setAmount(e.target.value)} />
-            <input className="input" placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} />
+            <div className="form-group">
+              <label>Amount</label>
+              <input className="input" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Category</label>
+              <select className="select" value={category} onChange={e => setCategory(e.target.value)}>
+                <option value="">Select category</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
           <div className="form-row">
-            <select className="select" value={category} onChange={e => setCategory(e.target.value)}>
-              <option value="">Select Category</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+            <div className="form-group">
+              <label>Description</label>
+              <input className="input" value={description} onChange={e => setDescription(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Date</label>
+              <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
           </div>
           <button className="button" type="submit">Add Expense</button>
-          {isSubmitting && <Spinner />}
         </form>
       </div>
 
       <div className="card">
-        <h2>Total: ETB {totalExpenses.toFixed(2)}</h2>
-        {monthlyBudget && (
-          <p>Monthly Budget: <strong>ETB {monthlyBudget}</strong></p>
-        )}
-        <button className="button" onClick={handleBudgetSave}>Set/Update Budget</button>
-        <button className="button" onClick={handleBudgetDelete}>Delete Budget</button>
-      </div>
-
-      <div className="card">
-        <h3>Filter & Sort</h3>
-        <select className="select" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select className="select" value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
-          {sortOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-        </select>
+        <h2>Monthly Budget</h2>
+        <p>Current Budget: <strong>{monthlyBudget !== null ? `ETB${monthlyBudget}` : 'Not Set'}</strong></p>
+        <input className="input" type="number" placeholder="Enter new budget" value={newBudget} onChange={e => setNewBudget(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button className="button" onClick={saveBudget}>Save Budget</button>
+          <button className="button" onClick={deleteBudget}>Delete Budget</button>
+        </div>
       </div>
 
       <div className="card">
         <h2>Recent Expenses</h2>
-        {sorted.map(expense => (
-          <div key={expense.id} className="expense-row">
-            <div>
-              <strong>{expense.description}</strong> <br />
-              <small>{expense.category} | {expense.date}</small>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ marginRight: 10 }}>ETB {expense.amount.toFixed(2)}</span>
-              <button onClick={() => deleteExpense(expense.id)}><Trash size={16} /></button>
-            </div>
-          </div>
-        ))}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <select className="select" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+            <option value="">All Categories</option>
+            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+          <select className="select" value={sortBy} onChange={e => setSortBy(e.target.value as 'date' | 'amount')}>
+            <option value="date">Sort by Date</option>
+            <option value="amount">Sort by Amount</option>
+          </select>
+          <select className="select" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
+        <div className="expense-list">
+          {filteredExpenses.length === 0 ? (
+            <p>No expenses recorded yet</p>
+          ) : (
+            filteredExpenses.map(expense => (
+              <div key={expense.id} className="expense-row">
+                <div>
+                  <div className="expense-label">{expense.description}</div>
+                  <div style={{ fontSize: '0.9rem' }}>{expense.category} • {expense.date}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="expense-value">ETB{expense.amount.toFixed(2)}</span>
+                  <button className="delete-btn" onClick={() => deleteExpense(expense.id)}><Trash size={18} /></button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      <button onClick={handleSignOut} className="button" style={{ marginTop: 16 }}>
-        Sign Out
-      </button>
-    </div>
-  )
-}
-
-// Spinner Component Inline (can move to separate file if needed)
-function Spinner() {
-  return (
-    <div style={{ textAlign: 'center', marginTop: 16 }}>
-      <div className="spinner" />
-      <style>{`
-        .spinner {
-          width: 24px;
-          height: 24px;
-          border: 4px solid #ccc;
-          border-top: 4px solid #0ea5e9;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin: 0 auto;
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>Sign Out</button>
     </div>
   )
 }
