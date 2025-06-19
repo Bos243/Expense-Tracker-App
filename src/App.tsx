@@ -49,7 +49,10 @@ export default function ExpenseTracker() {
   const [password, setPassword] = useState('')
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false)  // for sign in/up loading
+  const [submittingExpense, setSubmittingExpense] = useState(false) // for adding expense
+  const [budgetSaving, setBudgetSaving] = useState(false)
+  const [budgetDeleting, setBudgetDeleting] = useState(false)
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null)
   const [newBudget, setNewBudget] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
@@ -110,6 +113,8 @@ export default function ExpenseTracker() {
     if (!amount || !description || !category || !date || !user) return
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount < 0) return
+
+    setSubmittingExpense(true)
     try {
       await addDoc(collection(db, "expenses"), {
         amount: parsedAmount,
@@ -130,6 +135,8 @@ export default function ExpenseTracker() {
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
       console.error("Error adding document:", err)
+    } finally {
+      setSubmittingExpense(false)
     }
   }
 
@@ -192,6 +199,8 @@ export default function ExpenseTracker() {
     if (!user || !newBudget) return
     const parsed = parseFloat(newBudget)
     if (isNaN(parsed) || parsed < 0) return
+
+    setBudgetSaving(true)
     try {
       await setDoc(doc(db, "budgets", user.uid), { amount: parsed })
       setMonthlyBudget(parsed)
@@ -199,17 +208,23 @@ export default function ExpenseTracker() {
       alert("✅ Budget saved!")
     } catch (err) {
       console.error("Error saving budget:", err)
+    } finally {
+      setBudgetSaving(false)
     }
   }
 
   const deleteBudget = async () => {
     if (!user) return
+
+    setBudgetDeleting(true)
     try {
       await deleteBudgetDoc(doc(db, "budgets", user.uid))
       setMonthlyBudget(null)
       alert("🗑️ Budget deleted.")
     } catch (err) {
       console.error("Error deleting budget:", err)
+    } finally {
+      setBudgetDeleting(false)
     }
   }
 
@@ -247,7 +262,11 @@ export default function ExpenseTracker() {
             </div>
             {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
             <button className="button" type="submit" disabled={loading}>
-              {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+              {loading ? (
+                <span className="spinner"></span>
+              ) : (
+                authMode === 'signin' ? 'Sign In' : 'Sign Up'
+              )}
             </button>
           </form>
           <button className="button" onClick={handleResetPassword} style={{ marginTop: 8 }}>
@@ -305,7 +324,9 @@ export default function ExpenseTracker() {
               <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <button className="button" type="submit">Add Expense</button>
+          <button className="button" type="submit" disabled={submittingExpense}>
+            {submittingExpense ? <span className="spinner"></span> : 'Add Expense'}
+          </button>
         </form>
       </div>
 
@@ -314,8 +335,12 @@ export default function ExpenseTracker() {
         <p>Current Budget: <strong>{monthlyBudget !== null ? `ETB${monthlyBudget}` : 'Not Set'}</strong></p>
         <input className="input" type="number" placeholder="Enter new budget" value={newBudget} onChange={e => setNewBudget(e.target.value)} />
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="button" onClick={saveBudget}>Save Budget</button>
-          <button className="button" onClick={deleteBudget}>Delete Budget</button>
+          <button className="button" onClick={saveBudget} disabled={budgetSaving}>
+            {budgetSaving ? <span className="spinner"></span> : 'Save Budget'}
+          </button>
+          <button className="button" onClick={deleteBudget} disabled={budgetDeleting}>
+            {budgetDeleting ? <span className="spinner"></span> : 'Delete Budget'}
+          </button>
         </div>
       </div>
 
