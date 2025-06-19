@@ -8,6 +8,7 @@ import {
   signOut,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   User
 } from "firebase/auth"
 import {
@@ -60,11 +61,7 @@ export default function ExpenseTracker() {
       return
     }
 
-    const q = query(
-      collection(db, "expenses"),
-      where("userId", "==", user.uid)
-    )
-
+    const q = query(collection(db, "expenses"), where("userId", "==", user.uid))
     const unsub = onSnapshot(q, (snapshot) => {
       const fetched = snapshot.docs.map(doc => {
         const data = doc.data()
@@ -150,6 +147,23 @@ export default function ExpenseTracker() {
     }
   }
 
+  const handleResetPassword = async () => {
+    if (!email) {
+      alert("Please enter your email address first.")
+      return
+    }
+
+    setLoading(true)
+    try {
+      await sendPasswordResetEmail(auth, email)
+      alert("✅ Password reset link sent to your email.")
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSignOut = async () => {
     await signOut(auth)
   }
@@ -181,6 +195,20 @@ export default function ExpenseTracker() {
               {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
             </button>
           </form>
+
+          {authMode === 'signin' && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="button"
+                style={{ padding: 4, fontSize: 14, backgroundColor: '#e2e8f0', color: '#1e293b' }}
+                onClick={handleResetPassword}
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
+
           <div style={{ marginTop: 12 }}>
             {authMode === 'signin' ? (
               <span>Don't have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
@@ -204,7 +232,7 @@ export default function ExpenseTracker() {
       </div>
     )
   }
-
+  
   return (
     <div className="app-container">
       <div className="card">
