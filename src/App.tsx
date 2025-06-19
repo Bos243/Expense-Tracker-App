@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { Trash } from "lucide-react"
 import { db, auth } from './firebase'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, User } from "firebase/auth"
+import { sendEmailVerification } from "firebase/auth"
 import {
   collection,
   addDoc,
