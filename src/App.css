@@ -1,5 +1,5 @@
 body {
-  background: linear-gradient(135deg, #f0f4f9 0%, #e0e7ef 100%);
+  background: linear-gradient(135deg, #01152e 0%, #013e84 100%);
   font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
   margin: 0;
   padding: 0;
@@ -9,13 +9,13 @@ body {
   max-width: 700px;
   margin: 40px auto;
   padding: 24px;
-  background: #fff;
+  background: #10356b;
   border-radius: 18px;
   box-shadow: 0 8px 32px rgba(60, 72, 88, 0.12);
 }
 
 .card {
-  background: #f9fafb;
+  background: #93c2f1;
   border-radius: 14px;
   box-shadow: 0 2px 8px rgba(60, 72, 88, 0.07);
   margin-bottom: 32px;
@@ -70,10 +70,10 @@ label {
 
 .input, .select {
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #3580f1;
   border-radius: 7px;
   font-size: 1rem;
-  background: #fff;
+  background: #4066f1;
   transition: border 0.2s;
   margin-bottom: 0;
 }
@@ -106,7 +106,7 @@ label {
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #1f63ed;
 }
 
 .summary-row:last-child, .expense-row:last-child {
@@ -128,7 +128,7 @@ label {
 }
 
 .expense-row {
-  background: #fff;
+  background: #4b26ee;
   border-radius: 7px;
   margin-bottom: 10px;
   padding: 14px 18px;
