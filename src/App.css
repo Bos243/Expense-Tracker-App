@@ -1,174 +1,238 @@
+:root {
+  /* Modernized Color Palette */
+  --primary-dark: #01152e;
+  --primary-main: #1a56db;
+  --primary-light: #93c2f1;
+  --secondary-dark: #1e40af;
+  --secondary-light: #4b26ee;
+  --accent: #3b82f6;
+  --text-dark: #1f2937;
+  --text-light: #f9fafb;
+  --bg-gradient-start: #01152e;
+  --bg-gradient-end: #013e84;
+  --card-bg: rgba(255, 255, 255, 0.08);
+  --success: #10b981;
+  --error: #ef4444;
+  --border-radius: 12px;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Base Styles ===== */
 body {
-  background: linear-gradient(135deg, #01152e 0%, #013e84 100%);
-  font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+  background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   margin: 0;
   padding: 0;
+  min-height: 100vh;
+  color: var(--text-light);
+  line-height: 1.6;
 }
 
+/* ===== Layout ===== */
 .app-container {
-  max-width: 700px;
-  margin: 40px auto;
-  padding: 24px;
-  background: #10356b;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px rgba(60, 72, 88, 0.12);
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border-radius: var(--border-radius);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* ===== Cards ===== */
 .card {
-  background: #93c2f1;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(60, 72, 88, 0.07);
-  margin-bottom: 32px;
-  padding: 24px 28px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 2rem;
+  padding: 1.75rem;
+  transition: var(--transition);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .card-title {
-  font-size: 1.7rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: #2563eb;
-  margin-bottom: 18px;
-  letter-spacing: 0.5px;
+  color: white;
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.25px;
+  position: relative;
+  padding-bottom: 0.5rem;
 }
 
+.card-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+/* ===== Forms ===== */
 .expense-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 @media (min-width: 768px) {
   .form-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-.form-row {
-  display: flex;
-  gap: 18px;
-  margin-bottom: 18px;
-  flex-wrap: wrap;
-}
-
 .form-group {
-  flex: 1 1 180px;
   display: flex;
   flex-direction: column;
 }
 
 label {
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  margin-bottom: 6px;
-  color: #374151;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .input, .select {
-  padding: 10px 12px;
-  border: 1px solid #3580f1;
-  border-radius: 7px;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
   font-size: 1rem;
-  background: #4066f1;
-  transition: border 0.2s;
-  margin-bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transition: var(--transition);
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .input:focus, .select:focus {
-  border-color: #2563eb;
+  border-color: var(--accent);
   outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
+/* ===== Buttons ===== */
 .button {
-  background: linear-gradient(90deg, #2563eb 60%, #1e40af 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--primary-main) 0%, var(--secondary-dark) 100%);
+  color: white;
   border: none;
-  border-radius: 7px;
-  padding: 12px 28px;
-  font-size: 1.1rem;
+  border-radius: 8px;
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 8px rgba(37,99,235,0.07);
-  margin-top: 10px;
+  transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(26, 86, 219, 0.2);
+  text-align: center;
+  display: inline-block;
+  margin-top: 0.5rem;
 }
 
 .button:hover {
-  background: linear-gradient(90deg, #1e40af 60%, #2563eb 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.3);
+}
+
+/* ===== Expense List ===== */
+.expense-list {
+  margin-top: 1.5rem;
 }
 
 .summary-row, .expense-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #1f63ed;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.summary-row:last-child, .expense-row:last-child {
-  border-bottom: none;
+.expense-row {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  padding: 1rem 1.25rem;
+  transition: var(--transition);
+}
+
+.expense-row:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .summary-label, .expense-label {
   font-weight: 500;
-  color: #374151;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .summary-value, .expense-value {
-  font-weight: 700;
-  color: #2563eb;
-}
-
-.expense-list {
-  margin-top: 10px;
-}
-
-.expense-row {
-  background: #4b26ee;
-  border-radius: 7px;
-  margin-bottom: 10px;
-  padding: 14px 18px;
-  box-shadow: 0 1px 4px rgba(60, 72, 88, 0.06);
+  font-weight: 600;
+  color: white;
 }
 
 .delete-btn {
   background: none;
   border: none;
-  color: #ef4444;
-  font-size: 1.2rem;
+  color: var(--error);
+  font-size: 1.25rem;
   cursor: pointer;
-  margin-left: 12px;
-  transition: color 0.2s;
+  margin-left: 1rem;
+  transition: var(--transition);
+  opacity: 0.7;
 }
 
 .delete-btn:hover {
-  color: #b91c1c;
+  color: white;
+  background: var(--error);
+  border-radius: 50%;
+  padding: 0.25rem;
+  opacity: 1;
 }
 
+/* ===== Empty State ===== */
 .empty-state {
   text-align: center;
   padding: 2rem 0;
-  color: #6b7280;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .empty-state p:first-child {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
 }
 
 .empty-state p:last-child {
   font-size: 0.875rem;
 }
 
-@media (max-width: 600px) {
-  .app-container, .card {
-    padding: 12px;
+/* ===== Responsive Adjustments ===== */
+@media (max-width: 640px) {
+  .app-container {
+    margin: 1rem;
+    padding: 1.25rem;
   }
+  
+  .card {
+    padding: 1.25rem;
+  }
+  
   .form-row {
     flex-direction: column;
-    gap: 10px;
+    gap: 1rem;
   }
 }
