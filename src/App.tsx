@@ -44,19 +44,20 @@ export default function ExpenseTracker() {
   const [password, setPassword] = useState('')
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser)
+    const unsub = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+    })
     return () => unsub()
   }, [])
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !user.emailVerified) {
       setExpenses([])
       return
     }
-
-    console.log("✅ Listening for user ID:", user.uid)
 
     const q = query(
       collection(db, "expenses"),
@@ -64,11 +65,6 @@ export default function ExpenseTracker() {
     )
 
     const unsub = onSnapshot(q, (snapshot) => {
-      console.log("📦 Snapshot received:", snapshot.size, "docs")
-      snapshot.forEach(doc => {
-        console.log("📄 Doc:", doc.id, doc.data())
-      })
-
       const fetched = snapshot.docs.map(doc => {
         const data = doc.data()
         return {
@@ -80,10 +76,9 @@ export default function ExpenseTracker() {
           date: data.date?.toDate().toISOString().split('T')[0] || ''
         }
       })
-
       setExpenses(fetched)
     }, (err) => {
-      console.error("🔥 Snapshot error:", err.message)
+      console.error("Snapshot error:", err.message)
     })
 
     return () => unsub()
@@ -107,7 +102,7 @@ export default function ExpenseTracker() {
       setCategory('')
       setDate(new Date().toISOString().split('T')[0])
     } catch (err) {
-      console.error("❌ Error adding document:", err)
+      console.error("Error adding document:", err)
     }
   }
 
@@ -118,20 +113,39 @@ export default function ExpenseTracker() {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setLoading(true)
     try {
-      await createUserWithEmailAndPassword(auth, email, password)
+      const userCred = await createUserWithEmailAndPassword(auth, email, password)
+      if (userCred.user && !userCred.user.emailVerified) {
+        await userCred.user.sendEmailVerification()
+        alert("✅ Verification email sent! Please check your inbox.")
+      }
     } catch (err: any) {
       setError(err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setLoading(true)
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const userCred = await signInWithEmailAndPassword(auth, email, password)
+      const user = userCred.user
+
+      if (!user.emailVerified) {
+        await signOut(auth)
+        setError("⚠️ Email not verified. Please check your inbox.")
+        return
+      }
+
+      setUser(user)
     } catch (err: any) {
       setError(err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -161,16 +175,30 @@ export default function ExpenseTracker() {
               <label>Password</label>
               <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
-            {error && <div style={{color: 'red', marginBottom: 8}}>{error}</div>}
-            <button className="button" type="submit">{authMode === 'signin' ? 'Sign In' : 'Sign Up'}</button>
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+            <button className="button" type="submit" disabled={loading}>
+              {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+            </button>
           </form>
-          <div style={{marginTop: 12}}>
+          <div style={{ marginTop: 12 }}>
             {authMode === 'signin' ? (
-              <span>Don't have an account? <button className="button" style={{padding: 4, fontSize: 14}} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
+              <span>Don't have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signup')}>Sign Up</button></span>
             ) : (
-              <span>Already have an account? <button className="button" style={{padding: 4, fontSize: 14}} onClick={() => setAuthMode('signin')}>Sign In</button></span>
+              <span>Already have an account? <button className="button" style={{ padding: 4, fontSize: 14 }} onClick={() => setAuthMode('signin')}>Sign In</button></span>
             )}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (user && !user.emailVerified) {
+    return (
+      <div className="app-container">
+        <div className="card">
+          <h2 className="card-title">Please Verify Your Email</h2>
+          <p>A verification email has been sent to <strong>{user.email}</strong>. Click the link to activate your account.</p>
+          <button className="button" onClick={handleSignOut}>Sign Out</button>
         </div>
       </div>
     )
@@ -232,9 +260,7 @@ export default function ExpenseTracker() {
               />
             </div>
           </div>
-          <button type="submit" className="button">
-            Add Expense
-          </button>
+          <button type="submit" className="button">Add Expense</button>
         </form>
       </div>
 
@@ -245,8 +271,8 @@ export default function ExpenseTracker() {
           <span className="summary-value">${totalExpenses.toFixed(2)}</span>
         </div>
         {categorySummary.length > 0 && (
-          <div style={{marginTop: 12}}>
-            <h3 style={{fontSize: '1.1rem', color: '#1e293b', marginBottom: 8}}>By Category:</h3>
+          <div style={{ marginTop: 12 }}>
+            <h3 style={{ fontSize: '1.1rem', color: '#1e293b', marginBottom: 8 }}>By Category:</h3>
             {categorySummary.map((item) => (
               <div className="summary-row" key={item.category}>
                 <span className="summary-label">{item.category}</span>
@@ -261,17 +287,17 @@ export default function ExpenseTracker() {
         <h2 className="card-title">Recent Expenses</h2>
         <div className="expense-list">
           {expenses.length === 0 ? (
-            <p style={{color: '#64748b'}}>No expenses recorded yet</p>
+            <p style={{ color: '#64748b' }}>No expenses recorded yet</p>
           ) : (
             expenses.map((expense) => (
               <div key={expense.id} className="expense-row">
                 <div>
                   <div className="expense-label">{expense.description}</div>
-                  <div style={{fontSize: '0.95rem', color: '#64748b'}}>
+                  <div style={{ fontSize: '0.95rem', color: '#64748b' }}>
                     {expense.category} • {expense.date}
                   </div>
                 </div>
-                <div style={{display: 'flex', alignItems: 'center'}}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span className="expense-value">${expense.amount.toFixed(2)}</span>
                   <button
                     className="delete-btn"
@@ -287,7 +313,7 @@ export default function ExpenseTracker() {
         </div>
       </div>
 
-      <button className="button" onClick={handleSignOut} style={{marginTop: 16}}>
+      <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>
         Sign Out
       </button>
     </div>
