@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { Trash } from "lucide-react"
 import { db, auth } from './firebase'
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, User } from "firebase/auth"
-import { sendEmailVerification } from "firebase/auth"
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  sendEmailVerification,
+  User
+} from "firebase/auth"
 import {
   collection,
   addDoc,
@@ -112,7 +118,7 @@ export default function ExpenseTracker() {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password)
       if (userCred.user && !userCred.user.emailVerified) {
-        await userCred.user.sendEmailVerification()
+        await sendEmailVerification(userCred.user) // ✅ FIXED HERE
         alert("✅ Verification email sent! Please check your inbox.")
       }
     } catch (err: any) {
