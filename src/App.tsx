@@ -118,27 +118,35 @@ export default function ExpenseTracker() {
   }, [user])
 
   // --- Add new expense ---
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!amount || !description || !category || !date || !user) return
-    const parsedAmount = parseFloat(amount)
-    if (isNaN(parsedAmount) || parsedAmount < 0) return
-    try {
-      await addDoc(collection(db, "expenses"), {
-        amount: parsedAmount,
-        description,
-        category,
-        date: Timestamp.fromDate(new Date(date)),
-        userId: user.uid
-      })
-      setAmount('')
-      setDescription('')
-      setCategory('')
-      setDate(new Date().toISOString().split('T')[0])
-    } catch (err) {
-      console.error("Error adding document:", err)
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!amount || !description || !category || !date || !user) return
+  const parsedAmount = parseFloat(amount)
+  if (isNaN(parsedAmount) || parsedAmount < 0) return
+  try {
+    await addDoc(collection(db, "expenses"), {
+      amount: parsedAmount,
+      description,
+      category,
+      date: Timestamp.fromDate(new Date(date)),
+      userId: user.uid
+    })
+
+    // 🚨 Alert if budget exceeded
+    const updatedTotal = totalExpenses + parsedAmount
+    if (monthlyBudget !== null && updatedTotal > monthlyBudget) {
+      alert("⚠️ Warning: You have exceeded your monthly budget!")
     }
+
+    setAmount('')
+    setDescription('')
+    setCategory('')
+    setDate(new Date().toISOString().split('T')[0])
+  } catch (err) {
+    console.error("Error adding document:", err)
   }
+}
+
 
   // --- Delete an expense ---
   const deleteExpense = async (id: string) => {
