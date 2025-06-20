@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { Trash } from "lucide-react"
 import { db, auth } from './firebase'
+import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { getDocs } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -407,6 +409,60 @@ export default function ExpenseTracker() {
       </div>
 
       <button className="button" onClick={handleSignOut} style={{ marginTop: 16 }}>Sign Out</button>
+      {/* Delete Account Button */}
+<div style={{ marginTop: 20 }}>
+  <button
+    onClick={async () => {
+      const confirmed = window.confirm("⚠️ Are you sure you want to permanently delete your account and all your data?");
+      if (!confirmed) return;
+
+      const password = prompt("Please re-enter your password to confirm account deletion:");
+      if (!password || !user?.email) return alert("Password required.");
+
+      try {
+        // Re-authenticate the user
+        const credential = EmailAuthProvider.credential(user.email, password);
+        await reauthenticateWithCredential(user, credential);
+
+        // Delete all expenses
+        const expenseQuery = query(collection(db, "expenses"), where("userId", "==", user.uid));
+        const expenseSnapshot = await getDocs(expenseQuery);
+        const deletePromises = expenseSnapshot.docs.map(docSnap => deleteDoc(doc(db, "expenses", docSnap.id)));
+
+        // Delete budget
+        deletePromises.push(deleteDoc(doc(db, "budgets", user.uid)));
+
+        await Promise.all(deletePromises);
+
+        // Delete the user account
+        await deleteUser(user);
+        alert("✅ Your account and all data have been permanently deleted.");
+        window.location.reload();
+      } catch (err: any) {
+        if (err.code === 'auth/wrong-password') {
+          alert("❌ Incorrect password. Please try again.");
+        } else if (err.code === 'auth/requires-recent-login') {
+          alert("⚠️ Please sign in again before deleting your account.");
+        } else {
+          alert("Error: " + err.message);
+        }
+      }
+    }}
+    style={{
+      backgroundColor: '#dc2626',
+      color: 'white',
+      padding: '10px 16px',
+      border: 'none',
+      borderRadius: 6,
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      marginTop: 8
+    }}
+  >
+    🗑️ Delete My Account
+  </button>
+</div>
+
     </div>
   )
 }
