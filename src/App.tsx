@@ -11,6 +11,7 @@ import {
   sendEmailVerification,
   sendPasswordResetEmail,
   onAuthStateChanged,
+  deleteUser,
   User
 } from "firebase/auth"
 import {
